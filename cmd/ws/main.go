@@ -1,7 +1,13 @@
 package main
 
-import "github.com/zeina1i/ws/ws"
+import (
+	"flag"
+	"github.com/zeina1i/ws/ws"
+)
 
 func main() {
-	ws.Serve()
+	port := flag.String("port", "8081", "port to serve on")
+	flag.Parse()
+
+	ws.Serve(*port)
 }

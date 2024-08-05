@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/gorilla/websocket"
@@ -84,6 +85,7 @@ func handleMessages() {
 	for msg := range ch {
 		mu.Lock()
 		for client := range clients {
+
 			err := client.WriteMessage(websocket.TextMessage, []byte(msg.Payload))
 			if err != nil {
 				log.Printf("error: %v", err)
@@ -95,12 +97,40 @@ func handleMessages() {
 	}
 }
 
-func Serve() {
+func Serve(port string) {
 	http.HandleFunc("/ws", echo)
 	http.HandleFunc("/clientCount", clientCount)
 	http.HandleFunc("/status", status)
 
+	go heartbeat("localhost:" + port)
 	go handleMessages()
 
-	log.Fatal(http.ListenAndServe(":8081", nil))
+	log.Fatal(http.ListenAndServe(":"+port, nil))
+}
+
+func heartbeat(host string) {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			go checkStatus(host)
+		}
+	}
+}
+
+func checkStatus(host string) {
+	mu.Lock()
+	count := len(clients)
+	mu.Unlock()
+	fmt.Println(count)
+
+	if count < 3 {
+		rdb.ZAdd(ctx, "hosts", &redis.Z{Score: float64(time.Now().Unix()), Member: host}).Err()
+	} else {
+		fmt.Println("Removing host from Redis")
+
+		rdb.ZRem(ctx, "hosts", host).Err()
+	}
 }

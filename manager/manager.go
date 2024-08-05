@@ -20,36 +20,27 @@ var (
 )
 
 func getFreeNode(w http.ResponseWriter, r *http.Request) {
-	keys, err := rdb.Keys(ctx, "*").Result()
+	fiveSecondsAgo := float64(time.Now().Unix() - 5)
+
+	nodes, err := rdb.ZRangeByScore(ctx, "hosts", &redis.ZRangeBy{
+		Min: fmt.Sprintf("%f", fiveSecondsAgo),
+		Max: "+inf",
+	}).Result()
+
 	if err != nil {
-		http.Error(w, "Error getting keys from Redis", http.StatusInternalServerError)
+		http.Error(w, "Error getting nodes from Redis", http.StatusInternalServerError)
 		return
 	}
 
-	var freeNodes []string
-
-	for _, key := range keys {
-		status, err := rdb.Get(ctx, key).Result()
-		if err != nil {
-			http.Error(w, "Error getting status from Redis", http.StatusInternalServerError)
-			return
-		}
-
-		if status == "free" {
-			freeNodes = append(freeNodes, key)
-		}
-	}
-
-	if len(freeNodes) == 0 {
+	if len(nodes) == 0 {
 		http.Error(w, "No free nodes available", http.StatusNotFound)
 		return
 	}
 
 	rand.Seed(time.Now().UnixNano())
+	node := nodes[rand.Intn(len(nodes))]
 
-	freeNode := freeNodes[rand.Intn(len(freeNodes))]
-
-	fmt.Fprintf(w, "Free node: %s", freeNode)
+	fmt.Fprint(w, node)
 }
 
 func Serve() {
